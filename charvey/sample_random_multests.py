@@ -13,13 +13,14 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu):
     sigma = 0.15/np.sqrt(12)  # assumed level of monthly vol
     N = 240  # number of time-series
     
-    sig_vec = np.concatenate(([1], rho*np.ones(m_tot-1)))
-    SIGMA = np.vstack([np.roll(sig_vec, i) for i in range(m_tot)])
+    SIGMA = np.full((m_tot, m_tot), rho)
+    np.fill_diagonal(SIGMA, 1)
     MU = np.zeros(m_tot)
+
     shock_mat = np.random.multivariate_normal(MU, SIGMA*(sigma**2/N), M_simu)
-    
     prob_vec = np.random.uniform(0, 1, size=(M_simu, m_tot))
     mean_vec = np.random.exponential(lambd, size=(M_simu, m_tot))
+    
     m_indi = prob_vec > p_0
     mu_nul = m_indi*mean_vec  # Null-hypothesis
     tstat_mat = np.abs(mu_nul + shock_mat)/(sigma/np.sqrt(N))

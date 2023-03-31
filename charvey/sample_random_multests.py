@@ -1,6 +1,6 @@
 import numpy as np
 
-def sample_random_multests(rho, m_tot, p_0, lambd, M_simu):
+def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation = None):
     # Parameter input from Harvey, Liu and Zhu (2014)
     # Default: para_vec = [0.2, 1377, 4.4589*0.1, 5.5508*0.001,M_simu]
     
@@ -24,6 +24,10 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu):
     m_indi = prob_vec > p_0
     mu_nul = m_indi*mean_vec  # Null-hypothesis
     tstat_mat = np.abs(mu_nul + shock_mat)/(sigma/np.sqrt(N))
+    
+    if autocorrelation is not None:
+        tstat_mat *= (1 + (2*rho/(1-rho)) *
+                  (1 - ((1-rho)/(1-rho))))**(-0.5) 
 
     return tstat_mat
 

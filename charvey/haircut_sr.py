@@ -10,10 +10,10 @@ from sample_random_multests import sample_random_multests
 np.random.seed(3)
 
 
-def autocorrelation_adjustment(rho: float, sr: float, freq: int):
+def autocorrelation_adjustment_factor(rho: float, freq: int):
     adjustment = (1 + (2*rho/(1-rho)) *
                   (1 - ((1-rho**(freq))/(freq*(1-rho)))))**(-0.5)
-    return sr*adjustment
+    return adjustment
 
 
 def get_params(RHO):
@@ -58,7 +58,7 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     # 'SR': Sharpe ratio; either annualized or in the frequency specified in the previous step;
     # 'is_annualised': Indicator; if annulized, 'ind_an' = 1; otherwise = 0;
     # 'is_autocorrelated': Indicator; if adjusted for autocorrelations, 'ind_aut' = 0; otherwise = 1;
-    # 'autocorrelation': Autocorrelation coefficient at the specified frequency; - used to
+    # 'autocorrelation': Autocorrelation coefficient at the specified frequency; SR needs to be adjusted if autocorrelation between returns is assumed
 
     # 'num_test': Number of tests allowed, Harvey, Liu and Zhu (2014) find 315 factors;
     # 'crosssec_rho': Average correlation among contemporaneous strategy returns.
@@ -75,14 +75,15 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
 
     # Calculate annualised sharpe ratio based on input indicators
     sr_annual = SR
+    
     if not is_annualised:
         # annualise SR
         sr_annual = sr_annual * math.sqrt(frequency_to_days[sample_freq])
-
+        
     if is_autocorrelated:
         # adjust for autocorrelation
-        sr_annual = autocorrelation_adjustment(
-            autocorrelation, sr_annual, frequency_to_days[sample_freq])
+        sr_annual *= autocorrelation_adjustment_factor(
+            autocorrelation, frequency_to_days[sample_freq])
 
     # Number of monthly observations 'N'
     N = np.floor(num_obs * 12 / frequency_to_days[sample_freq])

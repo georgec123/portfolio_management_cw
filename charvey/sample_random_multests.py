@@ -26,8 +26,8 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation = Non
     tstat_mat = np.abs(mu_nul + shock_mat)/(sigma/np.sqrt(N))
     
     if autocorrelation is not None:
-        tstat_mat *= (1 + (2*rho/(1-rho)) *
-                  (1 - ((1-rho)/(1-rho))))**(-0.5) 
+        tstat_mat *= (1 + (2*autocorrelation/(1-autocorrelation)) *
+                  (1 - ((1-autocorrelation)/(1-autocorrelation))))**(-0.5) 
 
     return tstat_mat
 

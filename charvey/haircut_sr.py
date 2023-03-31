@@ -10,6 +10,12 @@ from sample_random_multests import sample_random_multests
 np.random.seed(3)
 
 
+def autocorrelation_adjustment(rho: float, sr: float, freq: int):
+    adjustment = (1 + (2*rho/(1-rho)) *
+                  (1 - ((1-rho**(freq))/(freq*(1-rho)))))**(-0.5)
+    return sr*adjustment
+
+
 def get_params(RHO):
     # Parameter input from Harvey, Liu and Zhu (2014)
 
@@ -21,6 +27,10 @@ def get_params(RHO):
                       [0.8, 3109, 8.3901 * 0.1, 5.5956 * 0.001]])
 
     # Interpolated parameter values based on user specified level of correlation RHO
+
+    # ie if RHO = 0.3, then the interpolated parameter values are calculated as follows:
+    # para_inter = 0.5 * para0[1, :] + 0.5 * para0[2, :]
+
     if (RHO >= 0) and (RHO < 0.2):
         para_inter = ((0.2 - RHO) / 0.2) * \
             para0[0, :] + ((RHO - 0) / 0.2) * para0[1, :]
@@ -42,41 +52,40 @@ def get_params(RHO):
     return para_inter
 
 
-def Haircut_SR(sm_fre, num_obs, SR, ind_an, ind_aut, rho, num_test, RHO, log=False):
-    # 'sm_fre': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
+def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, is_autocorrelated: bool, num_test: int, crosssec_rho: float, autocorrelation: float = None, log=False):
+    # 'sample_freq': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
     # 'num_obs': No. of observations in the frequency specified in the previous step;
     # 'SR': Sharpe ratio; either annualized or in the frequency specified in the previous step;
-    # 'ind_an': Indicator; if annulized, 'ind_an' = 1; otherwise = 0;
-    # 'ind_aut': Indicator; if adjusted for autocorrelations, 'ind_aut' = 0; otherwise = 1;
-    # 'rho': Autocorrelation coefficient at the specified frequency;
+    # 'is_annualised': Indicator; if annulized, 'ind_an' = 1; otherwise = 0;
+    # 'is_autocorrelated': Indicator; if adjusted for autocorrelations, 'ind_aut' = 0; otherwise = 1;
+    # 'autocorrelation': Autocorrelation coefficient at the specified frequency; - used to
+
     # 'num_test': Number of tests allowed, Harvey, Liu and Zhu (2014) find 315 factors;
-    # 'RHO': Average correlation among contemporaneous strategy returns.
+    # 'crosssec_rho': Average correlation among contemporaneous strategy returns.
 
     # Calculating the equivalent annualized Sharpe ratio 'sr_annual', after taking autocorrlation into account
-    sm_fre_fre_out_dict = {1: 'Daily', 2: 'Weekly',
+
+    if is_autocorrelated and autocorrelation is None:
+        raise ValueError(
+            'Autocorrelation coefficient must be specified if autocorrelation is to be taken into account.')
+
+    frequency_lookup = {1: 'Daily', 2: 'Weekly',
                            3: 'Monthly', 4: 'Quarterly', 5: 'Annual'}
-    sm_fre_days_dict = {1: 360, 2: 52, 3: 12, 4: 4, 5: 1}
-
-    fre_out = sm_fre_fre_out_dict[sm_fre]
-
-    sr_out = 'Yes' if ind_an == 1 else 'No'
-
-    def fn_sr_annual(rho, sr, fre): return sr*(1 + (2*rho/(1-rho))
-                                               * (1 - ((1-rho**(fre))/(fre*(1-rho)))))**(-0.5)
+    frequency_to_days = {1: 360, 2: 52, 3: 12, 4: 4, 5: 1}
 
     # Calculate annualised sharpe ratio based on input indicators
-    if ind_an == 1 and ind_aut == 0:
-        sr_annual = SR
-    elif ind_an == 1 and ind_aut == 1:
-        sr_annual = fn_sr_annual(rho, SR, sm_fre_days_dict[sm_fre])
-    elif ind_an == 0 and ind_aut == 0:
-        sr_annual = SR * math.sqrt(sm_fre_days_dict[sm_fre])
-    elif ind_an == 0 and ind_aut == 1:
-        sr_annual = fn_sr_annual(
-            rho, SR, sm_fre_days_dict[sm_fre]) * math.sqrt(sm_fre_days_dict[sm_fre])
+    sr_annual = SR
+    if not is_annualised:
+        # annualise SR
+        sr_annual = sr_annual * math.sqrt(frequency_to_days[sample_freq])
+
+    if is_autocorrelated:
+        # adjust for autocorrelation
+        sr_annual = autocorrelation_adjustment(
+            autocorrelation, sr_annual, frequency_to_days[sample_freq])
 
     # Number of monthly observations 'N'
-    N = np.floor(num_obs * 12 / sm_fre_days_dict[sm_fre])
+    N = np.floor(num_obs * 12 / frequency_to_days[sample_freq])
 
     # Number of tests allowed
     M = num_test
@@ -84,21 +93,21 @@ def Haircut_SR(sm_fre, num_obs, SR, ind_an, ind_aut, rho, num_test, RHO, log=Fal
     # Intermediate outputs
     if log:
         print('Inputs:')
-        print(f'Frequency = {fre_out};')
+        print(f'Frequency = {frequency_lookup[sample_freq]};')
         print(f'Number of Observations = {num_obs};')
         print(f'Initial Sharpe Ratio = {SR:.3f};')
-        print(f'Sharpe Ratio Annualized = {sr_out};')
-        print(f'Autocorrelation = {rho:.3f};')
+        print(f"Sharpe Ratio Annualized = {'Yes' if is_annualised else 'No'};")
+        print(f'Autocorrelation = {autocorrelation:.3f};')
         print(f'A/C Corrected Annualized Sharpe Ratio = {sr_annual:.3f}')
         print(f'Assumed Number of Tests = {M};')
-        print(f'Assumed Average Correlation = {RHO:.3f}.\n')
+        print(f'Assumed Average Correlation = {crosssec_rho:.3f}.\n')
 
     # Sharpe ratio adjustment
     m_vec = np.arange(1, M + 2)
     c_const = np.sum(1 / m_vec)
 
     # Input for Holm and BHY
-    para_inter = get_params(RHO)
+    para_inter = get_params(crosssec_rho)
 
     WW = 2000  # Number of repetitions
 
@@ -187,22 +196,23 @@ def Haircut_SR(sm_fre, num_obs, SR, ind_an, ind_aut, rho, num_test, RHO, log=Fal
 
 
 def replicate_paper_plots():
+    crosssec_rho = 0
+    autocorrelation = 0
 
     for num_test in [10, 50, 200]:
+        
         srs = np.linspace(0.2, 1.1, 16)
         results = []
 
         for idx, sr in enumerate(srs):
             print(f'Running {idx} of {len(srs)}')
-            results.append(
-                Haircut_SR(sm_fre=3,
-                           num_obs=240,
-                           SR=sr,
-                           ind_an=1,
-                           ind_aut=1,
-                           rho=0, num_test=num_test,
-                           RHO=0)
-            )
+            res = Haircut_SR(sample_freq=3, num_obs=240, SR=sr,
+                             is_annualised=True,
+                             is_autocorrelated=False,
+                             autocorrelation=autocorrelation,
+                             num_test=num_test,
+                             crosssec_rho=crosssec_rho)
+            results.append(res)
         results = np.array(results)
 
         outputs = ['P-value', 'Haircut Sharpe Ratio', 'Haircut pct']
@@ -213,18 +223,18 @@ def replicate_paper_plots():
 
             fig, ax = plt.subplots()
             for idx, method in enumerate(methods):
-                ax.plot(srs, results[:, output_idx, idx], label=method, linestyle=linestyles[idx])
+                ax.plot(srs, results[:, output_idx, idx],
+                        label=method, linestyle=linestyles[idx])
 
             if output == 'Haircut pct':
                 ax.hlines(0.5, 0, srs[-1], color='black', alpha=0.5)
             elif output == 'Haircut Sharpe Ratio':
-                ax.plot([0, srs[-1]],[0,srs[-1]], color='black', alpha=0.5)
-                ax.plot([0, srs[-1]],[0,srs[-1]/2], color='black', alpha=0.5)
+                ax.plot([0, srs[-1]], [0, srs[-1]], color='black', alpha=0.5)
+                ax.plot([0, srs[-1]], [0, srs[-1]/2], color='black', alpha=0.5)
 
-            
             ax.set_xlabel('Sharpe Ratio')
             ax.set_ylabel(output)
-            ax.set_title(f'{num_test} tests.')
+            ax.set_title(fr'{num_test} tests, $\rho_c$ = {crosssec_rho}, $\rho_a$ = {autocorrelation}')
             ax.legend()
             ax.set_xlim(xmin=0)
             ax.set_ylim(ymin=0)
@@ -236,5 +246,4 @@ def replicate_paper_plots():
 
 
 if __name__ == '__main__':
-    # Haircut_SR(sm_fre=3, num_obs=120,SR=1,ind_an=1,ind_aut=1,rho=0.1, num_test=100,RHO=0.4)
     replicate_paper_plots()

@@ -207,12 +207,13 @@ def replicate_paper_plots():
 
         outputs = ['P-value', 'Haircut Sharpe Ratio', 'Haircut pct']
         methods = ['Bon', 'Holm', 'BHY']
+        linestyles = ['-', '--', ':']
 
         for output_idx, output in enumerate(outputs):
 
             fig, ax = plt.subplots()
             for idx, method in enumerate(methods):
-                ax.plot(srs, results[:, output_idx, idx], label=method)
+                ax.plot(srs, results[:, output_idx, idx], label=method, linestyle=linestyles[idx])
 
             if output == 'Haircut pct':
                 ax.hlines(0.5, 0, srs[-1], color='black', alpha=0.5)

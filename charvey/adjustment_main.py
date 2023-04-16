@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 
 from scipy.stats import norm, t
 from sample_random_multests import sample_random_multests
+from plots import plot_sr, plot_var
 
 np.random.seed(3)
-
 
 def autocorrelation_adjustment_factor(rho: float, freq: int):
     adjustment = (1 + (2*rho/(1-rho)) *
@@ -122,7 +122,7 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     # Sharpe ratio, monthly
     sr = sr_annual / np.sqrt(12)
     T = sr * np.sqrt(N)
-    p_val = 2 * (1 - t.cdf(T, N - 1))
+    p_val = 2 * (1 - t.cdf(T, N - 1)) # use t-distribution here because we have sample variance
 
     # Drawing observations from the underlying p-value distribution; simulate a
     # large number (WW) of p-value samples
@@ -130,13 +130,13 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     p_bhy = np.ones(WW)
 
     for ww in range(WW):
-        if ww % 100 == 0:
-            print(f'Iteration {ww} of {WW}.', end='\r')
+        # if ww % 100 == 0:
+        #     print(f'Iteration {ww} of {WW}.', end='\r')
 
         yy = t_sample[ww, :M]
         t_value = yy.reshape(-1, 1)
 
-        p_val_sub = 2 * (1 - norm.cdf(t_value, 0, 1))
+        p_val_sub = 2 * (1 - norm.cdf(t_value, 0, 1)) # use normal distribution because true variance is known
 
         # Holm
         p_val_all = np.concatenate((p_val_sub.T[0], [p_val]))
@@ -171,7 +171,7 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
         p_sub_bhy = p_bhy_vec[p_val_order == p_val]
         p_bhy[ww] = p_sub_bhy[0]
 
-    print('\n')
+    # print('\n')
 
     p_BON = min(M * p_val, 1)  # Bonferroni
     p_HOL = np.median(p_holm)  # Holm
@@ -196,55 +196,23 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     return p_arr, sr_arr, haircut_arr
 
 
-def replicate_paper_plots():
-    crosssec_rho = 0
-    autocorrelation = 0
+def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
+    srs = np.linspace(0.2, 1.1, 16)
+    results = []
 
-    for num_test in [10, 50, 200]:
-        
-        srs = np.linspace(0.2, 1.1, 16)
-        results = []
-
-        for idx, sr in enumerate(srs):
-            print(f'Running {idx} of {len(srs)}')
-            res = Haircut_SR(sample_freq=3, num_obs=240, SR=sr,
-                             is_annualised=True,
-                             is_autocorrelated=False,
-                             autocorrelation=autocorrelation,
-                             num_test=num_test,
-                             crosssec_rho=crosssec_rho)
-            results.append(res)
-        results = np.array(results)
-
-        outputs = ['P-value', 'Haircut Sharpe Ratio', 'Haircut pct']
-        methods = ['Bon', 'Holm', 'BHY']
-        linestyles = ['-', '--', ':']
-
-        for output_idx, output in enumerate(outputs):
-
-            fig, ax = plt.subplots()
-            for idx, method in enumerate(methods):
-                ax.plot(srs, results[:, output_idx, idx],
-                        label=method, linestyle=linestyles[idx])
-
-            if output == 'Haircut pct':
-                ax.hlines(0.5, 0, srs[-1], color='black', alpha=0.5)
-            elif output == 'Haircut Sharpe Ratio':
-                ax.plot([0, srs[-1]], [0, srs[-1]], color='black', alpha=0.5)
-                ax.plot([0, srs[-1]], [0, srs[-1]/2], color='black', alpha=0.5)
-
-            ax.set_xlabel('Sharpe Ratio')
-            ax.set_ylabel(output)
-            ax.set_title(fr'{num_test} tests, $\rho_c$ = {crosssec_rho}, $\rho_a$ = {autocorrelation}')
-            ax.legend()
-            ax.set_xlim(xmin=0)
-            ax.set_ylim(ymin=0)
-
-            plot_dir = os.path.join(os.path.dirname(__file__), 'plots')
-
-            plt.savefig(os.path.join(plot_dir, f'{output}_{num_test}.png'))
-            plt.clf()
-
+    for idx, sr in enumerate(srs):
+        # print(f'Running {idx} of {len(srs)}')
+        res = Haircut_SR(sample_freq=3, num_obs=240, SR=sr,
+                        is_annualised=True,
+                        is_autocorrelated=False,
+                        autocorrelation=autocorrelation,
+                        num_test=num_test,
+                        crosssec_rho=crosssec_rho)
+        results.append(res)
+    results = np.array(results)
+    
+    plot_sr(srs, results, crosssec_rho=crosssec_rho, autocorrelation=autocorrelation, num_test=num_test)
+    plot_var(srs, results, crosssec_rho=crosssec_rho, autocorrelation=autocorrelation, num_test=num_test)
 
 if __name__ == '__main__':
-    replicate_paper_plots()
+    run_adjustment(crosssec_rho=0, autocorrelation=0, num_test=10)

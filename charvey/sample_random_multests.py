@@ -7,7 +7,7 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation = Non
     # p_0 probability for a random factor to have a zero mean   
     # lambd  # average of monthly mean returns for true strategies
     # m_tot  # total number of trials
-    # rho  # average correlation among returns
+    # rho  # average cross-correlation among returns
     # M_simu  # number of rows (simulations)
 
     sigma = 0.15/np.sqrt(12)  # assumed level of monthly vol

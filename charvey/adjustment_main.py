@@ -52,22 +52,39 @@ def get_params(RHO):
     return para_inter
 
 
-def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, is_autocorrelated: bool, num_test: int, crosssec_rho: float, autocorrelation: float = None, log=False):
-    # 'sample_freq': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
-    # 'num_obs': No. of observations in the frequency specified in the previous step;
-    # 'SR': Sharpe ratio; either annualized or in the frequency specified in the previous step;
-    # 'is_annualised': Indicator; if annulized, 'ind_an' = 1; otherwise = 0;
-    # 'is_autocorrelated': Indicator; if adjusted for autocorrelations, 'ind_aut' = 0; otherwise = 1;
-    # 'autocorrelation': Autocorrelation coefficient at the specified frequency; SR needs to be adjusted if autocorrelation between returns is assumed
+def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, is_autocorrelated: bool,
+                num_test: int, crosssec_rho: float, autocorrelation: float = None,
+                  log=False, sample_dist:str = 'exponential', std_scale: float=None, 
+                  num_simulations: int = 2000):
 
-    # 'num_test': Number of tests allowed, Harvey, Liu and Zhu (2014) find 315 factors;
-    # 'crosssec_rho': Average correlation among contemporaneous strategy returns.
+    """
+    'sample_freq': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
+    'num_obs': No. of observations in the frequency specified in the previous step;
+    'SR': Sharpe ratio; either annualized or in the frequency specified in the previous step;
+    'is_annualised': Indicator; if annulized, 'ind_an' = 1; otherwise = 0;
+    'is_autocorrelated': Indicator; if adjusted for autocorrelations, 'ind_aut' = 0; otherwise = 1;
+    'autocorrelation': Autocorrelation coefficient at the specified frequency; SR needs to be adjusted if autocorrelation between returns is assumed
 
-    # Calculating the equivalent annualized Sharpe ratio 'sr_annual', after taking autocorrlation into account
+    'num_test': Number of tests allowed, Harvey, Liu and Zhu (2014) find 315 factors;
+    'crosssec_rho': Average correlation among contemporaneous strategy returns.
+
+    'sample_dist': Sample distribution; 'exponential' or 'gamma';
+    'std_scale': By default, we will create gamma distribution with std = mean (similar to exponential dist). changing this param will change 
+            the std to std_scale*mean
+
+    Calculating the equivalent annualized Sharpe ratio 'sr_annual', after taking autocorrlation into account
+    """ 
 
     if is_autocorrelated and autocorrelation is None:
         raise ValueError(
             'Autocorrelation coefficient must be specified if autocorrelation is to be taken into account.')
+
+    allowed_dists = ['exponential', 'gamma']
+    if sample_dist not in allowed_dists:
+        raise ValueError(f'Sample distribution must be one of {allowed_dists}')
+    if sample_dist == 'gamma' and std_scale is None:
+        raise ValueError('Scale parameter must be specified for gamma distribution')
+    
 
     frequency_lookup = {1: 'Daily', 2: 'Weekly',
                            3: 'Monthly', 4: 'Quarterly', 5: 'Annual'}
@@ -110,14 +127,11 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     # Input for Holm and BHY
     para_inter = get_params(crosssec_rho)
 
-    WW = 2000  # Number of repetitions
-
     # Generate a panel of t-ratios (WW*Nsim_tests)
     # make sure Nsim_test >= M
-    Nsim_tests = int(
-        (np.floor(M / para_inter[1]) + 1) * np.floor(para_inter[1] + 1))
-    t_sample = sample_random_multests(
-        para_inter[0], Nsim_tests, para_inter[2], para_inter[3], WW)
+    Nsim_tests = int((np.floor(M / para_inter[1]) + 1) * np.floor(para_inter[1] + 1))
+    t_sample = sample_random_multests(para_inter[0], Nsim_tests, para_inter[2], para_inter[3], num_simulations, dist=sample_dist, 
+                                      std_scale=std_scale)
 
     # Sharpe ratio, monthly
     sr = sr_annual / np.sqrt(12)
@@ -126,12 +140,10 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
 
     # Drawing observations from the underlying p-value distribution; simulate a
     # large number (WW) of p-value samples
-    p_holm = np.ones(WW)
-    p_bhy = np.ones(WW)
+    p_holm = np.ones(num_simulations)
+    p_bhy = np.ones(num_simulations)
 
-    for ww in range(WW):
-        # if ww % 100 == 0:
-        #     print(f'Iteration {ww} of {WW}.', end='\r')
+    for ww in range(num_simulations):
 
         yy = t_sample[ww, :M]
         t_value = yy.reshape(-1, 1)
@@ -201,7 +213,6 @@ def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
     results = []
 
     for idx, sr in enumerate(srs):
-        # print(f'Running {idx} of {len(srs)}')
         res = Haircut_SR(sample_freq=3, num_obs=240, SR=sr,
                         is_annualised=True,
                         is_autocorrelated=False,
@@ -215,4 +226,5 @@ def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
     plot_var(srs, results, crosssec_rho=crosssec_rho, autocorrelation=autocorrelation, num_test=num_test)
 
 if __name__ == '__main__':
-    run_adjustment(crosssec_rho=0, autocorrelation=0, num_test=10)
+    for num_tests in [10, 50, 200]:
+        run_adjustment(crosssec_rho=0, autocorrelation=0, num_test=num_tests)

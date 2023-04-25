@@ -1,8 +1,5 @@
-import os
-
 import numpy as np
 import math
-import matplotlib.pyplot as plt
 
 from scipy.stats import norm, t
 from sample_random_multests import sample_random_multests
@@ -10,9 +7,9 @@ from plots import plot_sr, plot_var
 
 np.random.seed(3)
 
+
 def autocorrelation_adjustment_factor(rho: float, freq: int):
-    adjustment = (1 + (2*rho/(1-rho)) *
-                  (1 - ((1-rho**(freq))/(freq*(1-rho)))))**(-0.5)
+    adjustment = (1 + (2 * rho / (1 - rho)) * (1 - ((1 - rho ** (freq)) / (freq * (1 - rho))))) ** (-0.5)
     return adjustment
 
 
@@ -20,11 +17,15 @@ def get_params(RHO):
     # Parameter input from Harvey, Liu and Zhu (2014)
 
     # rho, m_tot, p_0, lambd
-    para0 = np.array([[0, 1295, 3.9660 * 0.1, 5.4995 * 0.001],
-                      [0.2, 1377, 4.4589 * 0.1, 5.5508 * 0.001],
-                      [0.4, 1476, 4.8604 * 0.1, 5.5413 * 0.001],
-                      [0.6, 1773, 5.9902 * 0.1, 5.5512 * 0.001],
-                      [0.8, 3109, 8.3901 * 0.1, 5.5956 * 0.001]])
+    para0 = np.array(
+        [
+            [0, 1295, 3.9660 * 0.1, 5.4995 * 0.001],
+            [0.2, 1377, 4.4589 * 0.1, 5.5508 * 0.001],
+            [0.4, 1476, 4.8604 * 0.1, 5.5413 * 0.001],
+            [0.6, 1773, 5.9902 * 0.1, 5.5512 * 0.001],
+            [0.8, 3109, 8.3901 * 0.1, 5.5956 * 0.001],
+        ]
+    )
 
     # Interpolated parameter values based on user specified level of correlation RHO
 
@@ -32,31 +33,35 @@ def get_params(RHO):
     # para_inter = 0.5 * para0[1, :] + 0.5 * para0[2, :]
 
     if (RHO >= 0) and (RHO < 0.2):
-        para_inter = ((0.2 - RHO) / 0.2) * \
-            para0[0, :] + ((RHO - 0) / 0.2) * para0[1, :]
+        para_inter = ((0.2 - RHO) / 0.2) * para0[0, :] + ((RHO - 0) / 0.2) * para0[1, :]
     elif (RHO >= 0.2) and (RHO < 0.4):
-        para_inter = ((0.4 - RHO) / 0.2) * \
-            para0[1, :] + ((RHO - 0.2) / 0.2) * para0[2, :]
+        para_inter = ((0.4 - RHO) / 0.2) * para0[1, :] + ((RHO - 0.2) / 0.2) * para0[2, :]
     elif (RHO >= 0.4) and (RHO < 0.6):
-        para_inter = ((0.6 - RHO) / 0.2) * \
-            para0[2, :] + ((RHO - 0.4) / 0.2) * para0[3, :]
+        para_inter = ((0.6 - RHO) / 0.2) * para0[2, :] + ((RHO - 0.4) / 0.2) * para0[3, :]
     elif (RHO >= 0.6) and (RHO < 0.8):
-        para_inter = ((0.8 - RHO) / 0.2) * \
-            para0[3, :] + ((RHO - 0.6) / 0.2) * para0[4, :]
+        para_inter = ((0.8 - RHO) / 0.2) * para0[3, :] + ((RHO - 0.6) / 0.2) * para0[4, :]
     elif (RHO >= 0.8) and (RHO < 1.0):
-        para_inter = ((0.8 - RHO) / 0.2) * \
-            para0[3, :] + ((RHO - 0.6) / 0.2) * para0[4, :]
+        para_inter = ((0.8 - RHO) / 0.2) * para0[3, :] + ((RHO - 0.6) / 0.2) * para0[4, :]
     else:
         para_inter = para0[1, :]
 
     return para_inter
 
 
-def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, is_autocorrelated: bool,
-                num_test: int, crosssec_rho: float, autocorrelation: float = None,
-                  log=False, sample_dist:str = 'exponential', std_scale: float=None, 
-                  num_simulations: int = 2000):
-
+def Haircut_SR(
+    sample_freq: int,
+    num_obs: int,
+    SR: float,
+    is_annualised: bool,
+    is_autocorrelated: bool,
+    num_test: int,
+    crosssec_rho: float,
+    autocorrelation: float = None,
+    log=False,
+    sample_dist: str = "exponential",
+    std_scale: float = None,
+    num_simulations: int = 2000,
+):
     """
     'sample_freq': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
     'num_obs': No. of observations in the frequency specified in the previous step;
@@ -69,38 +74,36 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     'crosssec_rho': Average correlation among contemporaneous strategy returns.
 
     'sample_dist': Sample distribution; 'exponential' or 'gamma';
-    'std_scale': By default, we will create gamma distribution with std = mean (similar to exponential dist). changing this param will change 
+    'std_scale': By default, we will create gamma distribution with std = mean (similar to exponential dist). changing this param will change
             the std to std_scale*mean
 
     Calculating the equivalent annualized Sharpe ratio 'sr_annual', after taking autocorrlation into account
-    """ 
+    """
 
     if is_autocorrelated and autocorrelation is None:
         raise ValueError(
-            'Autocorrelation coefficient must be specified if autocorrelation is to be taken into account.')
+            "Autocorrelation coefficient must be specified if autocorrelation is to be taken into account."
+        )
 
-    allowed_dists = ['exponential', 'gamma']
+    allowed_dists = ["exponential", "gamma"]
     if sample_dist not in allowed_dists:
-        raise ValueError(f'Sample distribution must be one of {allowed_dists}')
-    if sample_dist == 'gamma' and std_scale is None:
-        raise ValueError('Scale parameter must be specified for gamma distribution')
-    
+        raise ValueError(f"Sample distribution must be one of {allowed_dists}")
+    if sample_dist == "gamma" and std_scale is None:
+        raise ValueError("Scale parameter must be specified for gamma distribution")
 
-    frequency_lookup = {1: 'Daily', 2: 'Weekly',
-                           3: 'Monthly', 4: 'Quarterly', 5: 'Annual'}
+    frequency_lookup = {1: "Daily", 2: "Weekly", 3: "Monthly", 4: "Quarterly", 5: "Annual"}
     frequency_to_days = {1: 360, 2: 52, 3: 12, 4: 4, 5: 1}
 
     # Calculate annualised sharpe ratio based on input indicators
     sr_annual = SR
-    
+
     if not is_annualised:
         # annualise SR
         sr_annual = sr_annual * math.sqrt(frequency_to_days[sample_freq])
-        
+
     if is_autocorrelated:
         # adjust for autocorrelation
-        sr_annual *= autocorrelation_adjustment_factor(
-            autocorrelation, frequency_to_days[sample_freq])
+        sr_annual *= autocorrelation_adjustment_factor(autocorrelation, frequency_to_days[sample_freq])
 
     # Number of monthly observations 'N'
     N = np.floor(num_obs * 12 / frequency_to_days[sample_freq])
@@ -110,15 +113,15 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
 
     # Intermediate outputs
     if log:
-        print('Inputs:')
-        print(f'Frequency = {frequency_lookup[sample_freq]};')
-        print(f'Number of Observations = {num_obs};')
-        print(f'Initial Sharpe Ratio = {SR:.3f};')
+        print("Inputs:")
+        print(f"Frequency = {frequency_lookup[sample_freq]};")
+        print(f"Number of Observations = {num_obs};")
+        print(f"Initial Sharpe Ratio = {SR:.3f};")
         print(f"Sharpe Ratio Annualized = {'Yes' if is_annualised else 'No'};")
-        print(f'Autocorrelation = {autocorrelation:.3f};')
-        print(f'A/C Corrected Annualized Sharpe Ratio = {sr_annual:.3f}')
-        print(f'Assumed Number of Tests = {M};')
-        print(f'Assumed Average Correlation = {crosssec_rho:.3f}.\n')
+        print(f"Autocorrelation = {autocorrelation:.3f};")
+        print(f"A/C Corrected Annualized Sharpe Ratio = {sr_annual:.3f}")
+        print(f"Assumed Number of Tests = {M};")
+        print(f"Assumed Average Correlation = {crosssec_rho:.3f}.\n")
 
     # Sharpe ratio adjustment
     m_vec = np.arange(1, M + 2)
@@ -130,13 +133,14 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     # Generate a panel of t-ratios (WW*Nsim_tests)
     # make sure Nsim_test >= M
     Nsim_tests = int((np.floor(M / para_inter[1]) + 1) * np.floor(para_inter[1] + 1))
-    t_sample = sample_random_multests(para_inter[0], Nsim_tests, para_inter[2], para_inter[3], num_simulations, dist=sample_dist, 
-                                      std_scale=std_scale)
+    t_sample = sample_random_multests(
+        para_inter[0], Nsim_tests, para_inter[2], para_inter[3], num_simulations, dist=sample_dist, std_scale=std_scale
+    )
 
     # Sharpe ratio, monthly
     sr = sr_annual / np.sqrt(12)
     T = sr * np.sqrt(N)
-    p_val = 2 * (1 - t.cdf(T, N - 1)) # use t-distribution here because we have sample variance
+    p_val = 2 * (1 - t.cdf(T, N - 1))  # use t-distribution here because we have sample variance
 
     # Drawing observations from the underlying p-value distribution; simulate a
     # large number (WW) of p-value samples
@@ -144,11 +148,10 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     p_bhy = np.ones(num_simulations)
 
     for ww in range(num_simulations):
-
         yy = t_sample[ww, :M]
         t_value = yy.reshape(-1, 1)
 
-        p_val_sub = 2 * (1 - norm.cdf(t_value, 0, 1)) # use normal distribution because true variance is known
+        p_val_sub = 2 * (1 - norm.cdf(t_value, 0, 1))  # use normal distribution because true variance is known
 
         # Holm
         p_val_all = np.concatenate((p_val_sub.T[0], [p_val]))
@@ -174,8 +177,7 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
             if kk == (M + 1):
                 p_new = p_val_order[-1]
             else:
-                p_new = np.min(
-                    [((M + 1) * c_const / kk) * p_val_order[kk - 1], p_0])
+                p_new = np.min([((M + 1) * c_const / kk) * p_val_order[kk - 1], p_0])
 
             p_bhy_vec[kk - 1] = p_new
             p_0 = p_new
@@ -199,11 +201,11 @@ def Haircut_SR(sample_freq: int, num_obs: int, SR: float, is_annualised: bool, i
     haircut_arr = (sr_annual - sr_arr) / sr_annual
 
     if log:
-        for idx, method in enumerate(['Bonferroni', 'Holm', 'BHY', 'Average']):
-            print(f'{method} Adjustment:')
-            print(f'Adjusted P-value = {p_arr[idx]:.3f};')
-            print(f'Haircut Sharpe Ratio = {sr_arr[idx]:.3f};')
-            print(f'Percentage Haircut = {haircut_arr[idx]*100:.1f}%.\n')
+        for idx, method in enumerate(["Bonferroni", "Holm", "BHY", "Average"]):
+            print(f"{method} Adjustment:")
+            print(f"Adjusted P-value = {p_arr[idx]:.3f};")
+            print(f"Haircut Sharpe Ratio = {sr_arr[idx]:.3f};")
+            print(f"Percentage Haircut = {haircut_arr[idx]*100:.1f}%.\n")
 
     return p_arr, sr_arr, haircut_arr
 
@@ -213,18 +215,23 @@ def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
     results = []
 
     for idx, sr in enumerate(srs):
-        res = Haircut_SR(sample_freq=3, num_obs=240, SR=sr,
-                        is_annualised=True,
-                        is_autocorrelated=False,
-                        autocorrelation=autocorrelation,
-                        num_test=num_test,
-                        crosssec_rho=crosssec_rho)
+        res = Haircut_SR(
+            sample_freq=3,
+            num_obs=240,
+            SR=sr,
+            is_annualised=True,
+            is_autocorrelated=False,
+            autocorrelation=autocorrelation,
+            num_test=num_test,
+            crosssec_rho=crosssec_rho,
+        )
         results.append(res)
     results = np.array(results)
-    
+
     plot_sr(srs, results, crosssec_rho=crosssec_rho, autocorrelation=autocorrelation, num_test=num_test)
     plot_var(srs, results, crosssec_rho=crosssec_rho, autocorrelation=autocorrelation, num_test=num_test)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     for num_tests in [10, 50, 200]:
         run_adjustment(crosssec_rho=0, autocorrelation=0, num_test=num_tests)

@@ -4,8 +4,24 @@ import math
 from scipy.stats import norm, t
 from sample_random_multests import sample_random_multests
 from plots import plot_sr, plot_var
+import scipy.stats as ss
 
-np.random.seed(3)
+from tqdm.auto import tqdm
+
+
+# PSR haircut
+# see, for example, this implementation: https://quantdare.com/probabilistic-sharpe-ratio/
+def get_sr_std(sr, skew, kurt, T):
+    # kurt is not excess kurtosis, but kurtosis
+    # so if you supply the normal distribution, the 'kurt' parameter is 3
+    sr_std = np.sqrt((1 + (0.5 * sr**2) - (skew * sr) + (((kurt - 3) / 4) * sr**2)) / (T - 1))
+    return sr_std
+
+
+def get_psr(sr, skew, kurt, T, sr_benchmark=0):
+    sr_std = get_sr_std(sr, skew, kurt, T)
+    psr = ss.norm.cdf(np.abs((sr - sr_benchmark)) / sr_std)
+    return psr
 
 
 def autocorrelation_adjustment_factor(rho: float, freq: int):
@@ -59,8 +75,13 @@ def Haircut_SR(
     autocorrelation: float = None,
     log=False,
     sample_dist: str = "exponential",
+    sample_dist_innovations: str = "normal",
+    sample_innovations_params: dict = None,
     std_scale: float = None,
     num_simulations: int = 2000,
+    PSR_haircut: bool = False,  # if True, then calculate additional haircut for PSR, should supply SR_skew and SR_kurt
+    SR_skew: float = None,
+    SR_kurt: float = None,
 ):
     """
     'sample_freq': Sampling frequency; [1,2,3,4,5] = [Daily, Weekly, Monthly, Quarterly, Annual];
@@ -74,6 +95,7 @@ def Haircut_SR(
     'crosssec_rho': Average correlation among contemporaneous strategy returns.
 
     'sample_dist': Sample distribution; 'exponential' or 'gamma';
+    'sample_dist_innovations': Distribution of innovations; 'normal' or 'fleish';
     'std_scale': By default, we will create gamma distribution with std = mean (similar to exponential dist). changing this param will change
             the std to std_scale*mean
 
@@ -134,13 +156,24 @@ def Haircut_SR(
     # make sure Nsim_test >= M
     Nsim_tests = int((np.floor(M / para_inter[1]) + 1) * np.floor(para_inter[1] + 1))
     t_sample = sample_random_multests(
-        para_inter[0], Nsim_tests, para_inter[2], para_inter[3], num_simulations, dist=sample_dist, std_scale=std_scale
+        para_inter[0],
+        Nsim_tests,
+        para_inter[2],
+        para_inter[3],
+        num_simulations,
+        dist=sample_dist,
+        std_scale=std_scale,
+        dist_innovations=sample_dist_innovations,
+        innovations_params=sample_innovations_params,
     )
 
     # Sharpe ratio, monthly
     sr = sr_annual / np.sqrt(12)
     T = sr * np.sqrt(N)
     p_val = 2 * (1 - t.cdf(T, N - 1))  # use t-distribution here because we have sample variance
+    if PSR_haircut:
+        assert SR_skew is not None and SR_kurt is not None, "Must supply skew and kurtosis for PSR haircut"
+        raise NotImplementedError("PSR haircut not implemented yet")
 
     # Drawing observations from the underlying p-value distribution; simulate a
     # large number (WW) of p-value samples
@@ -185,8 +218,6 @@ def Haircut_SR(
         p_sub_bhy = p_bhy_vec[p_val_order == p_val]
         p_bhy[ww] = p_sub_bhy[0]
 
-    # print('\n')
-
     p_BON = min(M * p_val, 1)  # Bonferroni
     p_HOL = np.median(p_holm)  # Holm
     p_BHY = np.median(p_bhy)  # BHY
@@ -207,10 +238,13 @@ def Haircut_SR(
             print(f"Haircut Sharpe Ratio = {sr_arr[idx]:.3f};")
             print(f"Percentage Haircut = {haircut_arr[idx]*100:.1f}%.\n")
 
+    # sr_arr is the adjusted sharpe ratio for BON, HOL, BHY and AVG
     return p_arr, sr_arr, haircut_arr
 
 
-def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
+def run_adjustment(
+    crosssec_rho: float, autocorrelation: float, num_test: int, dist_innovations="normal", dist_innovations_params={}
+):
     srs = np.linspace(0.2, 1.1, 16)
     results = []
 
@@ -224,6 +258,8 @@ def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
             autocorrelation=autocorrelation,
             num_test=num_test,
             crosssec_rho=crosssec_rho,
+            sample_dist_innovations=dist_innovations,
+            sample_innovations_params=dist_innovations_params,
         )
         results.append(res)
     results = np.array(results)
@@ -233,5 +269,6 @@ def run_adjustment(crosssec_rho: float, autocorrelation: float, num_test: int):
 
 
 if __name__ == "__main__":
-    for num_tests in [10, 50, 200]:
+    np.random.seed(3)
+    for num_tests in tqdm([10, 50, 200]):
         run_adjustment(crosssec_rho=0, autocorrelation=0, num_test=num_tests)

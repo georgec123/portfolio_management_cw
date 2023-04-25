@@ -1,4 +1,5 @@
 import numpy as np
+from fleish import fit_fleishman_from_sk, generate_fleishman
 
 
 def get_gamma_params(scale: float, std_mult: float):
@@ -12,7 +13,18 @@ def get_gamma_params(scale: float, std_mult: float):
     return 1 / std_mult**2, scale * std_mult**2
 
 
-def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation=None, dist="exponential", std_scale=1):
+def sample_random_multests(
+    rho,
+    m_tot,
+    p_0,
+    lambd,
+    M_simu,
+    autocorrelation=None,
+    dist="exponential",
+    std_scale=1,
+    dist_innovations="normal",
+    innovations_params={},
+):
     # Parameter input from Harvey, Liu and Zhu (2014)
     # Default: para_vec = [0.2, 1377, 4.4589*0.1, 5.5508*0.001,M_simu]
 
@@ -34,15 +46,27 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation=None,
     sigma = 0.15 / np.sqrt(12)  # assumed level of monthly vol
     N = 240  # number of time-series
 
-    SIGMA = np.full((m_tot, m_tot), rho)
-    np.fill_diagonal(SIGMA, 1)
-    MU = np.zeros(m_tot)
+    shock_mat = None
+    if dist_innovations == "normal":
+        SIGMA = np.full((m_tot, m_tot), rho)
+        np.fill_diagonal(SIGMA, 1)
+        MU = np.zeros(m_tot)
+        shock_mat = np.random.multivariate_normal(MU, SIGMA * (sigma**2 / N), M_simu)
+    elif dist_innovations == "fleish":
+        if rho != 0:
+            raise ValueError("rho must be 0 for fleishman distribution")
+        skew = innovations_params["skew"]
+        ekurt = innovations_params["kurt"]
+        coeff = fit_fleishman_from_sk(skew, ekurt)
+        assert coeff is not None, f"no solution for skew={skew}, kurt={ekurt}"
+        shock_mat = (generate_fleishman(-coeff[1], *coeff, N=(M_simu, m_tot))) * sigma
+    else:
+        raise ValueError("dist_innovations must be either normal or fleish")
 
-    shock_mat = np.random.multivariate_normal(MU, SIGMA * (sigma**2 / N), M_simu)
     prob_vec = np.random.uniform(0, 1, size=(M_simu, m_tot))
-
     m_indi = prob_vec > p_0
     mu_nul = m_indi * mean_vec  # Null-hypothesis
+
     tstat_mat = np.abs(mu_nul + shock_mat) / (sigma / np.sqrt(N))
 
     if autocorrelation is not None:
@@ -54,5 +78,6 @@ def sample_random_multests(rho, m_tot, p_0, lambd, M_simu, autocorrelation=None,
 
 
 if __name__ == "__main__":
+    np.random.seed(1)
     tstat_mat = sample_random_multests(0.2, 1377, 4.4589 * 0.1, 5.5508 * 0.001, 1000)
     print(tstat_mat)

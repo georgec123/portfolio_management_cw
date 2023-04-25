@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 from scipy.stats import norm
 
-outputs = ["P-value", "Haircut Sharpe Ratio", "Haircut %"]
+outputs = ["P-value", "Haircut Sharpe Ratio", "Haircut"]
 methods = ["Bon", "Holm", "BHY"]
 linestyles = ["-", "--", ":"]
 var_levels = [0.95, 0.99]
@@ -27,14 +27,19 @@ def get_var(alpha: float, sharpe_ratios: np.ndarray):
 
 
 def plot_sr(
-    original_sr: np.ndarray, haircut_sr: np.ndarray, crosssec_rho: float, autocorrelation: float, num_test: int
+    original_sr: np.ndarray,
+    haircut_sr: np.ndarray,
+    crosssec_rho: float,
+    autocorrelation: float,
+    num_test: int,
+    file_prefix: str = "",
 ):
     for output_idx, output in enumerate(outputs):
         fig, ax = plt.subplots()
         for idx, method in enumerate(methods):
             ax.plot(original_sr, haircut_sr[:, output_idx, idx], label=method, linestyle=linestyles[idx])
 
-        if output == "Haircut %":
+        if output == "Haircut":
             ax.hlines(0.5, 0, original_sr[-1], color="black", alpha=0.5, label="$50\%$ adjustment")
             ax.yaxis.set_major_formatter(mtick.PercentFormatter(1))
 
@@ -50,7 +55,8 @@ def plot_sr(
         ax.set_ylim(ymin=0)
 
         plot_dir = os.path.join(os.path.dirname(__file__), "plots")
-        plt.savefig(os.path.join(plot_dir, f"SR_{output}_{num_test}.png"))
+        filename = f"{file_prefix}SR_{output}_{num_test}.png"
+        plt.savefig(os.path.join(plot_dir, filename))
         # plt.show()
         plt.clf()
 

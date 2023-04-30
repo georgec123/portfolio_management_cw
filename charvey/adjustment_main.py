@@ -20,7 +20,7 @@ def get_sr_std(sr, skew, kurt, T):
 
 def get_psr(sr, skew, kurt, T, sr_benchmark=0):
     sr_std = get_sr_std(sr, skew, kurt, T)
-    psr = ss.norm.cdf(np.abs((sr - sr_benchmark)) / sr_std)
+    psr = 2 * (1 - ss.norm.cdf(np.abs((sr - sr_benchmark)) / sr_std))
     return psr
 
 
@@ -99,6 +99,9 @@ def Haircut_SR(
     'std_scale': By default, we will create gamma distribution with std = mean (similar to exponential dist). changing this param will change
             the std to std_scale*mean
 
+    'SR_skew', 'SR_kurt': Skewness and kurtosis (not excess, e.g., 3 for normal dist) of the Sharpe ratio distribution;
+    only required if PSR_haircut = True
+
     Calculating the equivalent annualized Sharpe ratio 'sr_annual', after taking autocorrlation into account
     """
 
@@ -171,10 +174,31 @@ def Haircut_SR(
     sr = sr_annual / np.sqrt(12)
     T = sr * np.sqrt(N)
     p_val = 2 * (1 - t.cdf(T, N - 1))  # use t-distribution here because we have sample variance
+
+    p_arr, sr_arr, haircut_arr = get_adjustments_for_multiple_tests(
+        p_val, sr_annual, num_simulations, M, t_sample, c_const, N=N, log=log
+    )
     if PSR_haircut:
         assert SR_skew is not None and SR_kurt is not None, "Must supply skew and kurtosis for PSR haircut"
-        raise NotImplementedError("PSR haircut not implemented yet")
+        p_val_psr = get_psr(sr, SR_skew, SR_kurt + 3, N)  # note that using N for number of observations
+        psr_p_arr, psr_sr_arr, psr_haircut_arr = get_adjustments_for_multiple_tests(
+            p_val_psr, sr_annual, num_simulations, M, t_sample, c_const, N=N, log=log
+        )
+        return [(p_arr, sr_arr, haircut_arr), (psr_p_arr, psr_sr_arr, psr_haircut_arr)]
+    else:
+        return p_arr, sr_arr, haircut_arr
 
+
+def get_adjustments_for_multiple_tests(
+    p_val,
+    sr_annual,
+    num_simulations,
+    M,
+    t_sample,
+    c_const,
+    N,
+    log=False,
+):
     # Drawing observations from the underlying p-value distribution; simulate a
     # large number (WW) of p-value samples
     p_holm = np.ones(num_simulations)
